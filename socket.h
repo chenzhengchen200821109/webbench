@@ -14,6 +14,6 @@
 #include <stdlib.h>
 #include <stdarg.h>
 
-int Socket(const char* host, int clientPort);
+extern int Socket(const char* host, int clientPort);
 
 #endif

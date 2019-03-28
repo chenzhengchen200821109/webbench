@@ -1,8 +1,4 @@
 /*
- * (C) Radim Kolar 1997-2004
- * This is free software, see GNU Public License version 2 for
- * details.
- *
  * Simple forking WWW Server benchmark:
  *
  * Usage:
@@ -55,13 +51,16 @@ char host[MAXHOSTNAMELEN];
 char request[REQUEST_SIZE];
 
 /*
+ * Below struct come from unistd.h
+ *
  * struct option {
- *     const char* name;
- *     int has_arg;
- *     int* flag;
- *     int val;
+ *   const char* name;
+ *   int has_arg;
+ *   int* flag;
+ *   int val;
  * };
  */
+
 static const struct option long_options[]=
 {
     { "force", no_argument, &force, 1 },
@@ -81,16 +80,19 @@ static const struct option long_options[]=
     { NULL, 0, NULL, 0 }
 };
 
+extern int Socket(const char* host, int port);
+
 /* prototypes */
-static void benchcore(const char* host,const int port, const char *request);
+static void benchcore(const char* host, const int port, const char *request);
 static int bench(void);
 static void build_request(const char *url);
 
 static void alarm_handler(int signal)
 {
-   timerexpired=1;
+   timerexpired = 1;
 }	
 
+/* useage information */
 static void usage(void)
 {
    fprintf(stderr,
@@ -142,22 +144,22 @@ int main(int argc, char *argv[])
             case 'V': printf(PROGRAM_VERSION"\n"); exit(0);
             case 't': benchtime = atoi(optarg); break;	     
             case 'p': 
-	        /* proxy server parsing server:port */
-	        tmp = strrchr(optarg, ':');
-	        proxyhost = optarg;
-	        if(tmp == NULL) {
-                break;
-	        }
-	        if(tmp == optarg) {
-		        fprintf(stderr,"Error in option --proxy %s: Missing hostname.\n",optarg);
-		        return 2;
-	        }
-	        if(tmp == optarg + strlen(optarg) - 1) {
-		        fprintf(stderr,"Error in option --proxy %s Port number is missing.\n",optarg);
-		        return 2;
-	        }
-	        *tmp = '\0'; // insert '\0' as a delimiter
-	        proxyport = atoi(tmp + 1); break;
+	            /* proxy server parsing server:port */
+	            tmp = strrchr(optarg, ':');
+	            proxyhost = optarg;
+	            if(tmp == NULL) {
+                    break;
+	            }
+	            if(tmp == optarg) {
+		            fprintf(stderr,"Error in option --proxy %s: Missing hostname.\n",optarg);
+		            return 2;
+	            }
+	            if(tmp == optarg + strlen(optarg) - 1) {
+		            fprintf(stderr,"Error in option --proxy %s Port number is missing.\n",optarg);
+		            return 2;
+	            }
+	            *tmp = '\0'; // insert '\0' as a delimiter
+	            proxyport = atoi(tmp + 1); break;
             case ':':
             case 'h':
             case '?': usage(); return 2 ; break; // not an option
@@ -177,10 +179,11 @@ int main(int argc, char *argv[])
 
     if(clients == 0) clients = 1;
     if(benchtime == 0) benchtime = 60;
+
     /* Copyright */
-    fprintf(stderr,"Webbench - Simple Web Benchmark "PROGRAM_VERSION"\n"
-            "Copyright (c) Radim Kolar 1997-2004, GPL Open Source Software.\n");
-    /* argv[optind] points to URL */
+    fprintf(stderr,"Webbench - Simple Web Benchmark "PROGRAM_VERSION"\n");
+
+    /* argv[optind] now points to URL */
     build_request(argv[optind]);
     /* print bench info */
     printf("\nBenchmarking: ");
@@ -196,12 +199,13 @@ int main(int argc, char *argv[])
 	    case METHOD_TRACE:
 		    printf("TRACE"); break;
     }
-    printf(" %s",argv[optind]);
+    printf(" %s", argv[optind]);
     switch(http10) {
 	    case 0: printf(" (using HTTP/0.9)"); break;
 	    case 2: printf(" (using HTTP/1.1)"); break;
     }
     printf("\n");
+
     if(clients == 1)
         printf("1 client");
     else
@@ -253,7 +257,7 @@ void build_request(const char* url)
             break;
     }
 		  
-    strcat(request," ");
+    strcat(request, " ");
     /*
      * URL syntax: <scheme>://<user>:<password>@<host>::<port>/path;<params>?<query>#<frag>.
      */
@@ -272,7 +276,7 @@ void build_request(const char* url)
         }
         /* protocol/host delimiter */
         i = strstr(url, "://") - url + 3;
-        /* printf("%d\n",i); */
+        // printf("%d\n", i);
         if(strchr(url + i,'/') == NULL) {
             fprintf(stderr,"\nInvalid URL syntax - hostname don't ends with '/'.\n");
             exit(2);
@@ -284,17 +288,17 @@ void build_request(const char* url)
             strncpy(host, url + i, strchr(url + i,':')- url - i);
 	        bzero(tmp,10);
 	        strncpy(tmp, index(url + i,':') + 1, strchr(url + i,'/') - index(url + i,':') - 1);
-	        /* printf("tmp=%s\n",tmp); */
+	        // printf("tmp=%s\n", tmp); 
 	        proxyport = atoi(tmp);
 	        if(proxyport == 0) 
                 proxyport = 80;
         } else {
             strncpy(host, url + i, strcspn(url + i, "/"));
         } 
-        // printf("Host=%s\n",host);
+        // printf("Host = %s\n", host);
         strcat(request + strlen(request), url + i + strcspn(url + i, "/"));
     } else {
-        // printf("ProxyHost=%s\nProxyPort=%d\n",proxyhost,proxyport);
+        // printf("ProxyHost = %s\nProxyPort = %d\n", proxyhost, proxyport);
         strcat(request, url);
     }
     if(http10 == 1)
@@ -313,7 +317,7 @@ void build_request(const char* url)
     if(force_reload && proxyhost != NULL)
     {
         /* no cache */
-        //strcat(request,"Pragma: no-cache\r\n");
+        //strcat(request, "Pragma: no-cache\r\n");
         strcat(request, "Cache-Control: no-cache\r\n");
     }
     if(http10 > 1) /* version: http/1.1 */
@@ -321,7 +325,7 @@ void build_request(const char* url)
     /* add empty line at end */
     if(http10 > 0) /* version: http/1.0+ */
         strcat(request, "\r\n"); 
-    // printf("Req=%s\n",request);
+    // printf("Req = %s\n", request);
 }
 
 /* benchmark */
@@ -348,8 +352,7 @@ static int bench(void)
     /* fork children */
     for(i = 0; i < clients; i++) { 
         pid = fork();
-	    if(pid <= (pid_t)0) { /* child process or error*/
-            //sleep(1); /* make childs faster */
+	    if(pid <= (pid_t)0) { /* child process or error */
 		    break;
 	    }
         sleep(1);
@@ -373,7 +376,7 @@ static int bench(void)
             perror("open pipe for writing failed.");
 		    return 3;
 	    }
-	    /* fprintf(stderr,"Child - %d %d\n",speed,failed); */
+	    // fprintf(stderr, "Child - %d %d\n", speed, failed);
 	    fprintf(f, "%d %d %d\n", success, failed, bytes);
 	    fclose(f);
 	    return 0;
@@ -397,13 +400,13 @@ static int bench(void)
 		  success += i;
 		  failed += j;
 		  bytes += k;
-		  /* fprintf(stderr,"*Knock* %d %d read=%d\n",speed,failed,pid); */
+		  // fprintf(stderr, "*Knock* %d %d read=%d\n", speed, failed, pid);
 		  if(--clients == 0) 
               break;
 	  }
 	  fclose(f);
 
-      printf("\nSpeed=%d pages/min, %d bytes/sec.\nRequests: %d susceed, %d failed.\n", (int)((success + failed)/(benchtime/60.0f)),
+      printf("\nSpeed=%d pages/min, %d bytes/sec.\nRequests: %d succeed, %d failed.\n", (int)((success + failed)/(benchtime/60.0f)),
 		     (int)(bytes/(float)benchtime),
 		     success,
 		     failed);
