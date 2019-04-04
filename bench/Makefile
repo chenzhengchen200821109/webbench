@@ -16,20 +16,8 @@ install: webbench
 	install -m 644 webbench.1 $(DESTDIR)$(PREFIX)/man/man1	
 	install -d $(DESTDIR)$(PREFIX)/share/doc/webbench
 
-webbench: webbench.o socket.o main.o UContext.o
-	$(CC) $(CFLAGS) $(LDFLAGS) -o webbench main.o webbench.o socket.o UContext.o $(LIBS) 
-
-main.o:
-	$(CC) -g -c -Wall main.c $(LIBS)
-
-webbench.o: webbench.c
-	$(CC) -g -c -std=c99 -Wall webbench.c $(LIBS)
-
-socket.o: socket.c
-	$(CC) -g -c -Wall socket.c $(LIBS)
-
-UContext.o: UContext.c UContext.S
-	$(CC) -g -c -Wall UContext.c UContext.S $(LIBS)
+webbench: main.c webbench.c socket.c UContext.c UContext.S
+	$(CC) $(CFLAGS) $(LDFLAGS) -o webbench main.c webbench.c socket.c UContext.c UContext.S $(LIBS) 
 
 clean:
 	-rm -f *.o webbench *~ core *.core tags

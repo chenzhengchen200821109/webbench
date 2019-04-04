@@ -52,7 +52,8 @@ void* thread_func(void* arg)
 void Create_Clients(int clients)
 {
     int size = THREAD_POOL_SIZE;
-    for (int i = 0; i < size; i++) {
+    int i;
+    for (i = 0; i < size; i++) {
         Thread_create_with_ID(&thread_pool[i], i, thread_func);
     }
 
@@ -92,7 +93,8 @@ char* Read_Response(int sockfd)
 void Destroy_Clients()
 {
     int size = THREAD_POOL_SIZE;
-    for (int i = 0; i < size; i++) {
+    int i;
+    for (i = 0; i < size; i++) {
         Thread_destroy(&thread_pool[i]);
     }
 }
