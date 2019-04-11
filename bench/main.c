@@ -1,5 +1,5 @@
 /*
- * Simple forking WWW Server benchmark:
+ * Simple WWW Server benchmark:
  *
  * Usage:
  *   webbench --help
@@ -8,11 +8,10 @@
  *    0 - sucess
  *    1 - benchmark failed (server is not on-line)
  *    2 - bad param
- *    3 - internal error, fork failed
+ *    3 - internal error
  * 
  */ 
 #include "socket.h"
-#include "webbench.h"
 #include "UContext.h"
 #include <unistd.h>
 #include <sys/param.h>
@@ -24,7 +23,7 @@
 /* values */
 int success = 0; /* the number of successful http requests */
 int failed = 0;  /* the number of failures */
-size_t bytes = 0;
+int connection = 0;
 
 /* http/1.0 is the default supported version */
 int http10 = 1; /* 0 - http/0.9, 1 - http/1.0, 2 - http/1.1 */
@@ -42,18 +41,22 @@ int clients = 1;
 int force = 0;
 int force_reload = 0; /* no cache */
 
+/* for proxy server */
 int proxyport = 80;
 char *proxyhost = NULL;
 
 /* internal */
-char host[MAXHOSTNAMELEN];
+#define HOSTNAMELEN 1048
+char host[HOSTNAMELEN];
 #define REQUEST_SIZE 2048
 char request[REQUEST_SIZE];
 
-extern Thread_t* thread_pool;
+#define THREAD_POOL_SIZE 10
+Thread_t thread_pool[THREAD_POOL_SIZE];
+int fds[THREAD_POOL_SIZE];
 
 /*
- * Below struct come from unistd.h
+ * Below struct comes from unistd.h
  *
  * struct option {
  *   const char* name;
@@ -84,7 +87,7 @@ static const struct option long_options[]=
 extern int Socket(const char* host, int port);
 
 /* prototypes */
-extern void benchcore(const char* host, const int port, const char *request);
+extern void benchcore(void);
 extern int bench(void);
 extern void build_request(const char *url);
 
@@ -108,6 +111,108 @@ static void usage(void)
 	"  -V|--version             Display program version.\n"
 	);
 };
+
+/* 线程池或者协程池 */
+int thread_index = 0;
+
+int Read_Response(int sockfd)
+{
+    ssize_t i;
+    char buf[15];
+
+    if ((i = read(sockfd, buf, 15)) < 0) {
+        close(sockfd);
+        return -1;
+    }
+    /* for debug */
+    write(1, buf, 15);
+    printf("\n");
+
+    return 0;
+}
+
+void Destroy_Clients()
+{
+    int size = THREAD_POOL_SIZE;
+    int i;
+
+    for (i = 0; i < size; i++) {
+        Thread_destroy(&thread_pool[i]);
+    }
+
+    for (i = 0; i < size; i++) {
+        if (fds[i] != -1)
+            close(fds[i]);
+    }
+}
+
+int Send_Request(int sockfd, char* req)
+{
+    ssize_t rlen;
+
+    if (sockfd == -1)
+        return -1;
+
+    rlen = strlen(req);
+    if (rlen != write(sockfd, req, rlen)) {
+        return -1;
+    }
+    //write(1, req, rlen);
+
+    return sockfd;
+}
+
+void* thread_func(void* arg)
+{
+    int size = THREAD_POOL_SIZE;
+    int sockfd;
+    int count = 10;
+
+    while (1) {
+        int temp = (thread_index % size);
+        thread_index = ((temp + 1) % size);
+        printf("Thread ID[%d] is doing stuff with stack top[%p] curr:%d:next:%d\n", thread_pool[temp].id, thread_pool[temp].stack_esp, temp, thread_index);
+        //if (fds[temp] != -1) {
+        //    if ((sockfd = Send_Request(fds[temp], request)) == -1)
+        //        failed++;
+        //    else
+        //        success++;
+        //}
+        if ((sockfd = Socket(proxyhost, proxyport)) != -1) {
+            Send_Request(sockfd, request);
+            close(sockfd);
+        }
+	    Thread_switch(&thread_pool[temp], &thread_pool[thread_index]);  //switch to thread B
+        /* when switch back, exectution restarts from here */
+        //count--;
+    }
+
+    Thread_exit();
+    return NULL;
+}
+
+void Create_Clients(int clients)
+{
+    int size = THREAD_POOL_SIZE;
+    int i;
+    int sockfd;
+
+    for (i = 0; i < size; i++) {
+        Thread_create_with_ID(&thread_pool[i], i, thread_func);
+    }
+
+    //for (i = 0; i < size; i++) {
+    //    if ((sockfd = Socket(proxyhost, proxyport)) != -1) {
+    //        printf("Create sockfd[%d]\n", sockfd);
+    //        fds[i] = sockfd;
+    //    }
+    //    else {
+    //        connection++;
+    //        fds[i] = -1;
+    //    }
+    //}
+
+}
 
 int main(int argc, char *argv[])
 {
@@ -145,11 +250,11 @@ int main(int argc, char *argv[])
                     break;
 	            }
 	            if(tmp == optarg) {
-		            fprintf(stderr,"Error in option --proxy %s: Missing hostname.\n",optarg);
+		            fprintf(stderr,"Error in option --proxy %s: Missing hostname.\n", optarg);
 		            return 2;
 	            }
 	            if(tmp == optarg + strlen(optarg) - 1) {
-		            fprintf(stderr,"Error in option --proxy %s Port number is missing.\n",optarg);
+		            fprintf(stderr,"Error in option --proxy %s Port number is missing.\n", optarg);
 		            return 2;
 	            }
 	            *tmp = '\0'; // insert '\0' as a delimiter
@@ -243,10 +348,10 @@ void build_request(const char* url)
             strcpy(request, "HEAD");
             break;
 	    case METHOD_OPTIONS: 
-            strcpy(request,"OPTIONS");
+            strcpy(request, "OPTIONS");
             break;
 	    case METHOD_TRACE: 
-            strcpy(request,"TRACE");
+            strcpy(request, "TRACE");
             break;
     }
 		  
@@ -278,9 +383,9 @@ void build_request(const char* url)
     if(proxyhost == NULL) {
         /* get port from hostname */
         if(index(url + i, ':') != NULL && index(url + i, ':') < index(url + i, '/')) {
-            strncpy(host, url + i, strchr(url + i,':')- url - i);
-	        bzero(tmp,10);
-	        strncpy(tmp, index(url + i,':') + 1, strchr(url + i,'/') - index(url + i,':') - 1);
+            strncpy(host, url + i, strchr(url + i, ':')- url - i);
+	        bzero(tmp, 10);
+	        strncpy(tmp, index(url + i, ':') + 1, strchr(url + i, '/') - index(url + i, ':') - 1);
 	        // printf("tmp=%s\n", tmp); 
 	        proxyport = atoi(tmp);
 	        if(proxyport == 0) 
@@ -325,26 +430,27 @@ void build_request(const char* url)
 int bench(void)
 {
     int sockfd;
-    int i;
 
+    if (proxyhost == NULL)
+        proxyhost = host;
     /* check avaibility of target server */
-    sockfd = Socket(proxyhost == NULL ? host : proxyhost, proxyport);
+    sockfd = Socket(proxyhost, proxyport);
     if(sockfd < 0) {
         fprintf(stderr,"\nConnect to server failed. Aborting benchmark.\n");
         return 1;
     }
     close(sockfd);
 
+    Create_Clients(0);
 
-    if(proxyhost == NULL)
-        benchcore(host, proxyport, request);
-    else
-        benchcore(proxyhost, proxyport, request);
+    benchcore();
 
-    return i;
+    Destroy_Clients();
+
+    return 0;
 }
 
-void benchcore(const char *host, const int port, const char *req)
+void benchcore(void)
 {
     struct timeval prev, now;
     double minutes;
@@ -356,4 +462,5 @@ void benchcore(const char *host, const int port, const char *req)
     minutes = (now.tv_sec - prev.tv_sec)/60.0f + (now.tv_usec - prev.tv_usec)/1000000/60.0f;
     printf("time difference: seconds[%ld] and microseconds[%ld]\n", now.tv_sec - prev.tv_sec, now.tv_usec - prev.tv_usec);
     printf("time difference: minutes[%f]\n", minutes);
+    printf("success: %d, failed: %d, connection failed: %d\n", success, failed, connection);
 }

@@ -18,7 +18,7 @@ void Thread_switch(Thread_t* from, Thread_t* to)
     if (ret == 0) {
         from->callee = to;
         to->caller = from;
-        printf("Thread ID[%d] is restored...\n", to->id);
+        //printf("Thread ID[%d] is restored...\n", to->id);
         restore_context(&(to->ucontext));
     } else {
         /* restored from other threads, just return and continue */
@@ -38,14 +38,14 @@ int Thread_create_with_ID(Thread_t* thread, int id, thread_handler_t handler)
     (thread->ucontext).buffer[esp] = (int)thread->stack_esp;
     (thread->ucontext).buffer[eip] = (int)thread->handler;
 
-    printf("Thread ID[%d] is created...\n", thread->id);
+    //printf("Thread ID[%d] is created...\n", thread->id);
     return id;
 }
 
 static void* Thread_Func(Thread_t* thread, void* arg)
 {
     // init
-    printf("Thread ID[%d] is executing...\n", thread->id);
+    //printf("Thread ID[%d] is executing...\n", thread->id);
     if (thread->thread_func)
         thread->thread_func(thread->arg);
     thread->terminated = 1;
@@ -99,7 +99,7 @@ int Thread_create(Thread_t* thread, const Thread_Attr_t* attr, thread_handler_t 
     thread->ucontext.ss_sp = thread->stack_ebp;
     UContext_Make(&(thread->ucontext), (ucontext_handler_t)Thread_Func, thread, arg); 
 
-    printf("Thread ID[%d] is created...\n", thread->id);
+    //printf("Thread ID[%d] is created...\n", thread->id);
     return thread->id;
 }
 
@@ -148,11 +148,11 @@ int Thread_exit()
 /* restore context of the thread's caller */
 void Thread_detach(Thread_t* thread)
 {
-    printf("Thread ID[%d] is detached...\n", thread->id);
+    //printf("Thread ID[%d] is detached...\n", thread->id);
     if (thread) {
         Thread_t* caller = thread->caller;
         if (caller) {
-            printf("Thread ID[%d] is restored...\n", caller->id); 
+            //printf("Thread ID[%d] is restored...\n", caller->id); 
             restore_context(&(caller->ucontext));
         }
         else
