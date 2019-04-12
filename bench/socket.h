@@ -15,5 +15,6 @@
 #include <stdarg.h>
 
 extern int Socket(const char* host, int clientPort);
+extern int UnBlock_Connect(int sockfd);
 
 #endif

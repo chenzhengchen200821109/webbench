@@ -19,6 +19,7 @@
 #include <getopt.h>
 #include <strings.h>
 #include <time.h>
+#include <fcntl.h>
 
 /* values */
 int success = 0; /* the number of successful http requests */
@@ -51,9 +52,14 @@ char host[HOSTNAMELEN];
 #define REQUEST_SIZE 2048
 char request[REQUEST_SIZE];
 
-#define THREAD_POOL_SIZE 10
+#define THREAD_POOL_SIZE 200
 Thread_t thread_pool[THREAD_POOL_SIZE];
-int fds[THREAD_POOL_SIZE];
+
+struct SockFd {
+    int fd;
+    int options;
+};
+struct SockFd fds[THREAD_POOL_SIZE];
 
 /*
  * Below struct comes from unistd.h
@@ -141,8 +147,8 @@ void Destroy_Clients()
     }
 
     for (i = 0; i < size; i++) {
-        if (fds[i] != -1)
-            close(fds[i]);
+        if (fds[i].fd != -1)
+            close(fds[i].fd);
     }
 }
 
@@ -166,29 +172,35 @@ void* thread_func(void* arg)
 {
     int size = THREAD_POOL_SIZE;
     int sockfd;
-    int count = 10;
+    int ret;
+    int count = 1;
 
-    while (1) {
+    while (count > 0) {
         int temp = (thread_index % size);
         thread_index = ((temp + 1) % size);
-        printf("Thread ID[%d] is doing stuff with stack top[%p] curr:%d:next:%d\n", thread_pool[temp].id, thread_pool[temp].stack_esp, temp, thread_index);
-        //if (fds[temp] != -1) {
-        //    if ((sockfd = Send_Request(fds[temp], request)) == -1)
-        //        failed++;
-        //    else
-        //        success++;
-        //}
-        if ((sockfd = Socket(proxyhost, proxyport)) != -1) {
-            Send_Request(sockfd, request);
-            close(sockfd);
+        //printf("Thread ID[%d] is doing stuff with stack top[%p] curr:%d:next:%d\n", thread_pool[temp].id, thread_pool[temp].stack_esp, temp, thread_index);
+        sockfd = fds[temp].fd;
+        if (sockfd != -1) {
+            ret = UnBlock_Connect(sockfd);
+            if (ret == -1) {
+                failed++;
+            }
         }
 	    Thread_switch(&thread_pool[temp], &thread_pool[thread_index]);  //switch to thread B
         /* when switch back, exectution restarts from here */
-        //count--;
+        count--;
     }
 
     Thread_exit();
     return NULL;
+}
+
+int setNonBlocking(int fd)
+{
+    int old_option = fcntl(fd, F_GETFL);
+    int new_option = old_option | O_NONBLOCK;
+    fcntl(fd, F_SETFD, new_option);
+    return old_option;
 }
 
 void Create_Clients(int clients)
@@ -201,16 +213,16 @@ void Create_Clients(int clients)
         Thread_create_with_ID(&thread_pool[i], i, thread_func);
     }
 
-    //for (i = 0; i < size; i++) {
-    //    if ((sockfd = Socket(proxyhost, proxyport)) != -1) {
-    //        printf("Create sockfd[%d]\n", sockfd);
-    //        fds[i] = sockfd;
-    //    }
-    //    else {
-    //        connection++;
-    //        fds[i] = -1;
-    //    }
-    //}
+    for (i = 0; i < size; i++) {
+        if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) != -1) {
+            printf("Thread ID[%d] create sockfd[%d]\n", i, sockfd);
+            fds[i].fd = sockfd;
+            fds[i].options = setNonBlocking(fds[i].fd);
+        } else {
+            printf("Thread ID[%d] cannot create sockfd\n", i);
+            fds[i].fd = -1;
+        }
+    }
 
 }
 
@@ -283,6 +295,7 @@ int main(int argc, char *argv[])
 
     /* argv[optind] now points to URL */
     build_request(argv[optind]);
+    //write(1, request, 2048);
     /* print bench info */
     printf("\nBenchmarking: ");
     switch(method)
@@ -404,6 +417,8 @@ void build_request(const char* url)
     else if(http10==2)
 	    strcat(request, " HTTP/1.1");
     strcat(request, "\r\n");
+    /* keep-alive */
+    strcat(request, "Connection: keep-alive\r\n");
     if(http10 > 0) /* version: http/1.0+ */
         /* User-Agent should be randomly chosen */
 	    strcat(request, "User-Agent: WebBench "PROGRAM_VERSION"\r\n");
@@ -454,9 +469,30 @@ void benchcore(void)
 {
     struct timeval prev, now;
     double minutes;
+    int size;
+    int i;
+
+    size = THREAD_POOL_SIZE;
+
+    fd_set readfds;
+    fd_set writefds;
+    struct timeval timeout;
+
+    FD_ZERO(&readfds);
+
+    for (i = 0; i < size; i++) {
+        if (fds[i].fd != -1) {
+            FD_SET(fds[i].fd, &writefds);
+        }
+    }
+
+    timeout.tv_sec = 1;
+    timeout.tv_usec = 0;
 
     gettimeofday(&prev, NULL);
     Thread_start_with_save(&thread_pool[0]);
+    int ret = select(fds[size - 1].fd + 1, NULL, &writefds, NULL, &timeout);
+    printf("total number of fds is %d\n", ret);
     gettimeofday(&now, NULL);
 
     minutes = (now.tv_sec - prev.tv_sec)/60.0f + (now.tv_usec - prev.tv_usec)/1000000/60.0f;

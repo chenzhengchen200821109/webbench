@@ -20,7 +20,7 @@ webbench: main.c socket.c UContext.c UContext.S
 	$(CC) $(CFLAGS) $(LDFLAGS) -o webbench main.c socket.c UContext.c UContext.S $(LIBS) 
 
 clean:
-	-rm -f *.o webbench *~ core *.core tags
+	-rm -f *.o webbench *~ core *.core tags a.out
 	
 tar:   clean
 	rm -rf $(TMPDIR)
