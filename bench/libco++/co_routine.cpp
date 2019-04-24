@@ -436,6 +436,7 @@ static int CoRoutineFunc( stCoRoutine_t *co,void * )
 {
 	if( co->pfn )
 	{
+        co_enable_hook_sys();
 		co->pfn( co->arg );
 	}
 	co->cEnd = 1;
