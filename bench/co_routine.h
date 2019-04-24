@@ -49,5 +49,10 @@ stShareStack_t* co_alloc_sharestack(int iCount, int iStackSize);
 
 //7.log
 void co_log_err( const char *fmt,... );
+
+//8. pid and tid
+pid_t GetTid();
+pid_t GetTid();
+
 #endif
 

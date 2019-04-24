@@ -96,17 +96,23 @@ static unsigned long long GetTickMS()
 }
 
 /* get thread ID and process ID */
-static pid_t GetPid()
+pid_t GetTid()
 {
-    static __thread pid_t pid = 0;
     static __thread pid_t tid = 0;
-    if( !pid || !tid || pid != getpid() )
+    if( !tid )
     {
-        pid = getpid();
         tid = syscall( __NR_gettid );
     }
     return tid;
 
+}
+
+pid_t GetPid()
+{
+    static __thread pid_t pid = 0;
+    if (!pid || pid != getpid())
+        pid = getpid();
+    return pid;
 }
 
 /* 从双向链表中删除节点 */
@@ -715,9 +721,9 @@ static stCoRoutineEnv_t* g_arrCoEnvPerThread[ 204800 ] = { 0 };
 /* 初始化协程环境，初始化主协程 */
 void co_init_curr_thread_env()
 {
-	pid_t pid = GetPid();	
-	g_arrCoEnvPerThread[ pid ] = (stCoRoutineEnv_t*)calloc( 1,sizeof(stCoRoutineEnv_t) );
-	stCoRoutineEnv_t *env = g_arrCoEnvPerThread[ pid ];
+	pid_t tid = GetTid();	
+	g_arrCoEnvPerThread[ tid ] = (stCoRoutineEnv_t*)calloc( 1,sizeof(stCoRoutineEnv_t) );
+	stCoRoutineEnv_t *env = g_arrCoEnvPerThread[ tid ];
 
 	env->iCallStackSize = 0;
 	struct stCoRoutine_t *self = co_create_env( env, NULL, NULL,NULL );
@@ -739,7 +745,7 @@ void co_init_curr_thread_env()
 
 stCoRoutineEnv_t *co_get_curr_thread_env()
 {
-	return g_arrCoEnvPerThread[ GetPid() ];
+	return g_arrCoEnvPerThread[ GetTid() ];
 }
 
 /* 一旦时间到期则切换协程执行 */
